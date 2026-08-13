@@ -1,0 +1,118 @@
+/* Shorts Dislike Button — styles for the injected control.
+   Everything is namespaced under .ysd- so we never collide with YouTube's own CSS. */
+
+.ysd-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.ysd-btn {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--yt-spec-badge-chip-background, rgba(0, 0, 0, 0.05));
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.ysd-btn:hover {
+  background: var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.1));
+}
+
+.ysd-btn:active {
+  transform: scale(0.92);
+}
+
+.ysd-btn:focus-visible {
+  outline: 2px solid var(--yt-spec-call-to-action, #3ea6ff);
+  outline-offset: 2px;
+}
+
+.ysd-btn[aria-pressed="true"] {
+  background: var(--yt-spec-text-primary, #f1f1f1);
+  color: var(--yt-spec-base-background, #0f0f0f);
+}
+
+.ysd-btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ysd-icon {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+/* The dislike glyph is the like glyph rotated 180deg (same as YouTube's own icon
+   pair), so a cloned like icon becomes a correct dislike icon. */
+.ysd-icon--flip {
+  transform: rotate(180deg);
+}
+
+.ysd-label {
+  margin-top: 4px;
+  font-family: "Roboto", "Arial", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  user-select: none;
+}
+
+/* YouTube renders Shorts on a dark surface even in light theme on some layouts. */
+html[dark] .ysd-btn,
+[dark] .ysd-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+html[dark] .ysd-btn:hover,
+[dark] .ysd-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+html[dark] .ysd-btn[aria-pressed="true"],
+[dark] .ysd-btn[aria-pressed="true"] {
+  background: #f1f1f1;
+  color: #0f0f0f;
+}
+
+html[dark] .ysd-label,
+[dark] .ysd-label {
+  color: #fff;
+}
+
+/* Applied to a native dislike control that YouTube shipped but hid. */
+.ysd-force-visible {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.ysd-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  max-width: 80vw;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  font-family: "Roboto", "Arial", sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  pointer-events: none;
+}
