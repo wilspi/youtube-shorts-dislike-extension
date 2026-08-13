@@ -17,8 +17,25 @@
   window.__ysdLoaded = true;
 
   const TAG = '[shorts-dislike]';
-  const DEBUG = false;
-  const log = (...args) => { if (DEBUG) console.log(TAG, ...args); };
+  // Toggle at runtime from the console — no code edit, no reload of the
+  // extension: localStorage.setItem('ysd-debug', '1')
+  let DEBUG = false;
+  try {
+    DEBUG = localStorage.getItem('ysd-debug') === '1';
+  } catch (err) {
+    /* storage blocked */
+  }
+
+  // sync() runs on a 1s safety-net interval, so repeat messages are dropped to
+  // keep the console readable.
+  let lastLogged = '';
+  function log(...args) {
+    if (!DEBUG) return;
+    const key = args.join(' ');
+    if (key === lastLogged) return;
+    lastLogged = key;
+    console.log(TAG, ...args);
+  }
 
   const runtime = (globalThis.browser || globalThis.chrome).runtime;
 
@@ -56,8 +73,18 @@
     'ytd-dislike-button-renderer',
   ].join(',');
 
-  /** videoId -> true when we believe our own button has disliked it. */
-  const dislikedByUs = new Map();
+  /**
+   * videoId -> true when the account has disliked it.
+   *
+   * Seeded from YouTube on first sight of a Short (so a reload shows the real
+   * state) and updated optimistically on click. This map is the single source
+   * of truth for the button: the sync loop repaints from it every second, so
+   * anything not recorded here gets clobbered.
+   */
+  const disliked = new Map();
+
+  /** videoIds we have already asked YouTube about, to keep sync() from looping. */
+  const statusAsked = new Set();
 
   /* ------------------------------------------------------------------ *
    * DOM helpers
@@ -89,12 +116,40 @@
       || null;
   }
 
-  function findActionBar(reel, likeEl) {
-    if (likeEl) {
-      const anchored = likeEl.closest(ACTION_BAR_SELECTOR);
-      if (anchored) return anchored;
+  /**
+   * The like button is the anchor for everything else — it is the one control
+   * that is always present and visible in a Shorts action bar. Prefer the one
+   * inside the active reel, but fall back to the whole document so a reel
+   * selector that has gone stale cannot take the extension down with it.
+   */
+  function findLike() {
+    const reel = activeReel();
+    const scopes = reel ? [reel, document] : [document];
+    for (const scope of scopes) {
+      const found = Array.from(scope.querySelectorAll(LIKE_SELECTOR));
+      const onScreen = found.find((el) => el.getClientRects().length);
+      if (onScreen) return onScreen;
+      if (found.length) return found[0];
     }
-    return reel.querySelector(ACTION_BAR_SELECTOR);
+    return null;
+  }
+
+  /**
+   * Climb from the like button to the element that holds the whole column of
+   * action buttons. Used when none of the known action-bar selectors match:
+   * the bar is the nearest ancestor with more than one child.
+   */
+  function inferActionBar(likeEl) {
+    let node = likeEl.parentElement;
+    for (let i = 0; node && i < 5; i++) {
+      if (node.childElementCount >= 2) return node;
+      node = node.parentElement;
+    }
+    return likeEl.parentElement;
+  }
+
+  function findActionBar(likeEl) {
+    return likeEl.closest(ACTION_BAR_SELECTOR) || inferActionBar(likeEl);
   }
 
   function isHidden(el) {
@@ -111,6 +166,25 @@
       node = node.parentElement;
     }
     return node && node.parentElement === bar ? node : null;
+  }
+
+  /**
+   * Un-hide `el` and any hidden ancestor up to `stopAt`. Revealing the control
+   * alone is not enough when YouTube hid a wrapper around it instead.
+   */
+  function forceVisible(el, stopAt) {
+    let node = el;
+    for (let i = 0; node && node !== stopAt && i < 6; i++) {
+      node.removeAttribute('hidden');
+      if (isHidden(node)) node.classList.add('ysd-force-visible');
+      node = node.parentElement;
+    }
+  }
+
+  /** Read toggle state off a native dislike control. */
+  function nativePressed(native) {
+    const btn = native.querySelector('button') || native;
+    return btn.getAttribute('aria-pressed') === 'true';
   }
 
   /* ------------------------------------------------------------------ *
@@ -133,7 +207,7 @@
       const resolve = pending.get(msg.id);
       if (!resolve) return;
       pending.delete(msg.id);
-      resolve({ ok: !!msg.ok, reason: msg.reason });
+      resolve({ ok: !!msg.ok, reason: msg.reason, likeStatus: msg.likeStatus });
     });
 
     // Injecting a web-accessible resource as a page script is exempt from the
@@ -146,8 +220,8 @@
 
   /**
    * @param {string} videoId
-   * @param {'dislike'|'removelike'} action
-   * @returns {Promise<{ok: boolean, reason?: string}>}
+   * @param {'dislike'|'removelike'|'status'} action
+   * @returns {Promise<{ok: boolean, reason?: string, likeStatus?: string}>}
    */
   function sendAction(videoId, action) {
     injectBridge();
@@ -171,32 +245,40 @@
    * Injected button
    * ------------------------------------------------------------------ */
 
-  // Material "thumb up", used only when we cannot clone YouTube's own icon.
-  // Rendered rotated 180deg, which is exactly how the dislike glyph is drawn.
-  const FALLBACK_PATH = 'M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z';
+  const SVG_NS = 'http://www.w3.org/2000/svg';
 
-  function buildIcon(likeEl) {
-    const source = likeEl && likeEl.querySelector('svg');
-    if (source && source.querySelector('path')) {
-      const clone = source.cloneNode(true);
-      clone.removeAttribute('id');
-      clone.removeAttribute('class');
-      clone.setAttribute('aria-hidden', 'true');
-      clone.classList.add('ysd-icon', 'ysd-icon--flip');
-      return clone;
-    }
+  // Material "thumb up". The dislike glyph is this rotated 180deg — the same
+  // relationship YouTube's own icon pair has.
+  //
+  // We deliberately do NOT clone YouTube's like icon to build this. Cloning
+  // matched the page's styling perfectly when it worked, but the source SVG
+  // depends on which reel is active and how far it has rendered, so scrolling
+  // to a new Short could clone a half-built or entirely different icon and
+  // paint a blob. A fixed path is one glyph, always.
+  const THUMB_PATH = 'M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z';
 
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  function buildIcon() {
+    const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('aria-hidden', 'true');
-    svg.classList.add('ysd-icon', 'ysd-icon--flip');
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', FALLBACK_PATH);
-    svg.appendChild(path);
+    svg.classList.add('ysd-icon');
+
+    // Rotate in the SVG rather than in CSS: a page stylesheet cannot override
+    // it, and it cannot be lost if our class is stripped.
+    const group = document.createElementNS(SVG_NS, 'g');
+    group.setAttribute('transform', 'rotate(180 12 12)');
+
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', THUMB_PATH);
+    path.setAttribute('fill', 'currentColor');
+    path.setAttribute('stroke', 'none');
+
+    group.appendChild(path);
+    svg.appendChild(group);
     return svg;
   }
 
-  function buildButton(likeEl) {
+  function buildButton() {
     const wrap = document.createElement('div');
     wrap.className = 'ysd-wrap';
     wrap.dataset.ysd = '1';
@@ -207,7 +289,7 @@
     btn.title = 'Dislike';
     btn.setAttribute('aria-label', 'Dislike');
     btn.setAttribute('aria-pressed', 'false');
-    btn.appendChild(buildIcon(likeEl));
+    btn.appendChild(buildIcon());
 
     const label = document.createElement('span');
     label.className = 'ysd-label';
@@ -232,35 +314,78 @@
     const videoId = wrap.dataset.videoId;
     if (!videoId || btn.disabled) return;
 
-    const was = dislikedByUs.get(videoId) === true;
+    // If YouTube shipped a dislike control and we simply could not make it
+    // visible, click it: a hidden button is still clickable, and this way
+    // YouTube owns the state and the request. We are only a visible proxy.
+    const bar = wrap.closest(ACTION_BAR_SELECTOR) || wrap.parentElement;
+    const native = bar && bar.querySelector(DISLIKE_SELECTOR);
+    if (native) {
+      (native.querySelector('button') || native).click();
+      log('proxied click to native dislike control');
+      setTimeout(() => paint(wrap, nativePressed(native)), 0);
+      return;
+    }
+
+    const was = disliked.get(videoId) === true;
     const next = !was;
 
-    // Optimistic: flip immediately, roll back if the request fails.
+    // Optimistic: record it before painting, or the next sync() tick repaints
+    // from the map and undoes the flip while the request is still in flight.
+    disliked.set(videoId, next);
     paint(wrap, next);
     btn.disabled = true;
 
     const { ok, reason } = await sendAction(videoId, next ? 'dislike' : 'removelike');
     btn.disabled = false;
 
-    if (ok) {
-      dislikedByUs.set(videoId, next);
-    } else {
+    if (!ok) {
+      disliked.set(videoId, was);
       paint(wrap, was);
       toast(reason || 'Could not dislike this Short.');
     }
   }
 
-  function ensureInjected(bar, likeEl, videoId) {
+  /**
+   * Ask YouTube whether this account already disliked the Short, so a reload
+   * shows the real state instead of an empty button. Fires once per videoId.
+   */
+  async function seedStatus(videoId, wrap) {
+    if (statusAsked.has(videoId)) return;
+    statusAsked.add(videoId);
+
+    const { ok, likeStatus } = await sendAction(videoId, 'status');
+    if (!ok || !likeStatus) return;
+
+    // A click that landed while the lookup was in flight wins — it is newer.
+    if (disliked.has(videoId)) return;
+
+    disliked.set(videoId, likeStatus === 'DISLIKE');
+    log('seeded like status for', videoId, '=', likeStatus);
+    if (wrap.isConnected && wrap.dataset.videoId === videoId) {
+      paint(wrap, likeStatus === 'DISLIKE');
+    }
+  }
+
+  function ensureInjected(bar, likeEl, videoId, native) {
     let wrap = bar.querySelector('[data-ysd]');
     if (!wrap) {
-      wrap = buildButton(likeEl);
+      wrap = buildButton();
       const anchor = likeEl ? topLevelIn(bar, likeEl) : null;
       if (anchor) anchor.after(wrap);
       else bar.prepend(wrap);
-      log('injected dislike button');
+      log('injected dislike button into', bar.tagName.toLowerCase() + (bar.id ? '#' + bar.id : ''));
     }
     wrap.dataset.videoId = videoId;
-    paint(wrap, dislikedByUs.get(videoId) === true);
+
+    // When proxying a hidden native control, mirror its state rather than our
+    // own bookkeeping — YouTube's is authoritative and already correct on load.
+    if (native) {
+      paint(wrap, nativePressed(native));
+      return wrap;
+    }
+
+    seedStatus(videoId, wrap);
+    paint(wrap, disliked.get(videoId) === true);
     return wrap;
   }
 
@@ -299,28 +424,36 @@
       return;
     }
 
-    const reel = activeReel();
-    if (!reel) return;
+    const likeEl = findLike();
+    if (!likeEl) {
+      log('no like button found — action bar selectors may be stale');
+      return;
+    }
 
-    const likeEl = reel.querySelector(LIKE_SELECTOR);
-    const bar = findActionBar(reel, likeEl);
-    if (!bar) return;
+    const bar = findActionBar(likeEl);
+    if (!bar) {
+      log('found a like button but could not identify its action bar');
+      return;
+    }
 
     // Strategy 1: YouTube already has a dislike control here — reveal it and
     // stay out of the way.
     const native = bar.querySelector(DISLIKE_SELECTOR);
     if (native) {
-      if (isHidden(native)) {
-        native.removeAttribute('hidden');
-        native.classList.add('ysd-force-visible');
-        log('revealed native dislike control');
+      forceVisible(native, bar);
+      if (!isHidden(native)) {
+        log('native dislike control is visible; nothing to do');
+        removeInjected();
+        return;
       }
-      removeInjected();
-      return;
+      // Could not un-hide it (a wrapper we do not control, a stacking issue,
+      // zero-sized layout). Fall through and put our own button in front of it,
+      // proxying clicks to the real one.
+      log('native dislike control present but stays hidden; proxying it');
     }
 
-    // Strategy 2: no native control, inject ours.
-    removeInjected(ensureInjected(bar, likeEl, videoId));
+    // Strategy 2: our own button.
+    removeInjected(ensureInjected(bar, likeEl, videoId, native));
   }
 
   let queued = false;

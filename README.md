@@ -20,7 +20,14 @@ The content script watches the Shorts action bar and takes one of two paths:
    dislike is recorded on your account exactly as it would be from the watch
    page.
 
-That request is made by `src/page.js`, which runs in the page's own world rather
+The injected button is a real toggle, and it starts from the truth rather than
+from zero: the first time it sees a Short it asks `/youtubei/v1/next` whether
+this account already disliked the video, so a reload shows the disliked state
+instead of a blank button. Clicking flips it optimistically and rolls back if
+the request fails. (On the reveal path none of this applies — YouTube's own
+control already knows its state.)
+
+Those requests are made by `src/page.js`, which runs in the page's own world rather
 than the content script's. Two reasons: Firefox gives content-script `fetch()`
 the extension's principal, which would send `Origin: moz-extension://…` and get
 the request rejected, since the `SAPISIDHASH` is bound to
@@ -86,10 +93,27 @@ build.sh           produces the per-browser zips
 Step 3 is the one that matters — it's the difference between a button that looks
 right and a dislike that actually reached your account.
 
-To see what the script decided, set `DEBUG = true` near the top of
-`src/content.js` and watch the console for `[shorts-dislike]` lines. It logs
-whether it revealed a native control or injected its own, and the status of any
-failed request.
+### If the button doesn't appear
+
+Turn on logging — no code edit needed. In the DevTools console on a Shorts page:
+
+```js
+localStorage.setItem('ysd-debug', '1');   // then reload
+```
+
+`[shorts-dislike]` lines then report what the script decided: whether it found
+the like button, which action bar it picked, and whether it revealed a native
+control or injected its own. Repeat messages are suppressed.
+
+If it logs nothing useful, paste `tools/diagnose.js` into the console on a
+Shorts page. It dumps which selectors still match YouTube's current DOM, the
+like button's ancestry, and what else is in the action bar — enough to repair
+stale selectors without guessing.
+
+One gotcha: the console runs in the page's world, so `window.__ysdLoaded` (set
+by the content script, which lives in an isolated world) is invisible there.
+`window.__ysdBridge` is the one to check — it's set by the injected page script
+and proves the content script ran.
 
 ## Known limitations
 

@@ -53,12 +53,6 @@
   pointer-events: none;
 }
 
-/* The dislike glyph is the like glyph rotated 180deg (same as YouTube's own icon
-   pair), so a cloned like icon becomes a correct dislike icon. */
-.ysd-icon--flip {
-  transform: rotate(180deg);
-}
-
 .ysd-label {
   margin-top: 4px;
   font-family: "Roboto", "Arial", sans-serif;
