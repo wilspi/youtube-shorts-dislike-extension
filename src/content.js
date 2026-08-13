@@ -270,8 +270,11 @@
 
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', THUMB_PATH);
-    path.setAttribute('fill', 'currentColor');
-    path.setAttribute('stroke', 'none');
+    // Outline when idle, solid when disliked — YouTube's own like/dislike
+    // glyphs do the same. Both states stroke the one silhouette, so the icon
+    // keeps its size and only its fill changes. The switch lives in the
+    // stylesheet, keyed off aria-pressed.
+    path.setAttribute('stroke-linejoin', 'round');
 
     group.appendChild(path);
     svg.appendChild(group);

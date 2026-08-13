@@ -36,11 +36,6 @@
   outline-offset: 2px;
 }
 
-.ysd-btn[aria-pressed="true"] {
-  background: var(--yt-spec-text-primary, #f1f1f1);
-  color: var(--yt-spec-base-background, #0f0f0f);
-}
-
 .ysd-btn[disabled] {
   opacity: 0.5;
   cursor: default;
@@ -49,8 +44,18 @@
 .ysd-icon {
   width: 24px;
   height: 24px;
-  fill: currentColor;
   pointer-events: none;
+}
+
+/* Idle: outline only. Disliked: solid. Same glyph either way. */
+.ysd-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.ysd-btn[aria-pressed="true"] .ysd-icon path {
+  fill: currentColor;
 }
 
 .ysd-label {
@@ -73,12 +78,6 @@ html[dark] .ysd-btn,
 html[dark] .ysd-btn:hover,
 [dark] .ysd-btn:hover {
   background: rgba(255, 255, 255, 0.2);
-}
-
-html[dark] .ysd-btn[aria-pressed="true"],
-[dark] .ysd-btn[aria-pressed="true"] {
-  background: #f1f1f1;
-  color: #0f0f0f;
 }
 
 html[dark] .ysd-label,
