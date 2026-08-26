@@ -1,5 +1,5 @@
 /*
- * Shorts Dislike Button
+ * Youtube Shorts Dislike Button
  *
  * Adds a dislike control to the YouTube Shorts action bar.
  *
