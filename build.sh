@@ -4,6 +4,7 @@
 #
 #   dist/chrome/  + dist/shorts-dislike-chrome.zip   -> Chrome, Edge, Brave, Opera, Vivaldi
 #   dist/firefox/ + dist/shorts-dislike-firefox.zip  -> Firefox (adds browser_specific_settings)
+#   dist/shorts-dislike-source.zip                    -> Mozilla reviewer source
 #
 # Usage: ./build.sh
 set -euo pipefail
@@ -11,6 +12,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 DIST="$ROOT/dist"
 SOURCES=(manifest.json src icons LICENSE NOTICE)
+SOURCE_FILES=(manifest.json src icons build.sh README.md SOURCE_BUILD.md LICENSE NOTICE)
 
 rm -rf "$DIST"
 mkdir -p "$DIST/chrome" "$DIST/firefox"
@@ -59,6 +61,9 @@ for target in chrome firefox; do
   (cd "$DIST/$target" && zip -qr "../shorts-dislike-$target.zip" .)
 done
 
+(cd "$ROOT" && zip -qr "$DIST/shorts-dislike-source.zip" "${SOURCE_FILES[@]}")
+
 echo "Built:"
 echo "  $DIST/shorts-dislike-chrome.zip"
 echo "  $DIST/shorts-dislike-firefox.zip"
+echo "  $DIST/shorts-dislike-source.zip"

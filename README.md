@@ -69,6 +69,8 @@ Produces:
   build adds Firefox's add-on ID and required data-transmission declarations.
   Firefox 140 or newer on desktop and 142 or newer on Android are required so
   the browser can show its built-in data consent prompt during installation.
+- `dist/shorts-dislike-source.zip` — upload as the separate source-code
+  archive requested by Mozilla during submission.
 
 ## Layout
 
@@ -78,7 +80,7 @@ src/content.js     detection, reveal/inject logic, button UI
 src/page.js        page-world bridge: signs and sends the InnerTube request
 src/content.css    button styling (light + dark theme)
 icons/             extension icons (icon.svg is the source)
-build.sh           produces the per-browser zips
+build.sh           produces store packages and the Mozilla source archive
 ```
 
 ## Verifying it works
