@@ -1,4 +1,4 @@
-# Shorts Dislike Button
+# Youtube Shorts Dislike Extension
 
 Adds a working dislike button to the YouTube Shorts player.
 
