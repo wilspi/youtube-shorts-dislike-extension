@@ -10,7 +10,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 DIST="$ROOT/dist"
-SOURCES=(manifest.json src icons)
+SOURCES=(manifest.json src icons LICENSE NOTICE)
 
 rm -rf "$DIST"
 mkdir -p "$DIST/chrome" "$DIST/firefox"
@@ -33,8 +33,21 @@ with open(path) as fh:
 manifest["browser_specific_settings"] = {
     "gecko": {
         "id": "shorts-dislike@wilspi.github.io",
-        "strict_min_version": "115.0",
-    }
+        # Firefox 140+ provides the built-in data-transmission consent prompt.
+        "strict_min_version": "140.0",
+        "data_collection_permissions": {
+            "required": [
+                "authenticationInfo",
+                "browsingActivity",
+                "websiteContent",
+                "websiteActivity",
+            ]
+        },
+    },
+    # Firefox for Android added built-in data consent in version 142.
+    "gecko_android": {
+        "strict_min_version": "142.0",
+    },
 }
 
 with open(path, "w") as fh:

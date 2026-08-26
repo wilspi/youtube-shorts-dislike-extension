@@ -3,7 +3,7 @@
 Adds a working dislike button to the YouTube Shorts player.
 
 On `youtube.com/watch?v=…` the dislike button is right there. On
-`youtube.com/shorts/…` — same video — it can be missing, depending on the
+`youtube.com/shorts/…` same video, it can be missing, depending on the
 rollout you're in. This extension puts it back.
 
 ## How it works
@@ -66,8 +66,9 @@ Produces:
   any Chromium browser.
 - `dist/shorts-dislike-firefox.zip` — upload to
   [addons.mozilla.org](https://addons.mozilla.org/developers/) for signing. This
-  build adds `browser_specific_settings.gecko.id`, which Mozilla requires and
-  Chrome warns about, which is why the two builds differ.
+  build adds Firefox's add-on ID and required data-transmission declarations.
+  Firefox 140 or newer on desktop and 142 or newer on Android are required so
+  the browser can show its built-in data consent prompt during installation.
 
 ## Layout
 
@@ -138,3 +139,8 @@ and proves the content script ran.
   dislike a video id. It validates the id and action shape and can do nothing
   else, and the only scripts on that origin are YouTube's own — but it is a real
   widening of what page scripts can reach, worth knowing about.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). The thumb icon is derived from
+Google Material Icons; see [NOTICE](NOTICE).
