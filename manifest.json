@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Shorts Dislike Button",
+  "name": "Youtube Shorts Dislike Extension",
   "version": "1.0.0",
   "description": "Adds a working dislike button to the YouTube Shorts player.",
   "icons": {
